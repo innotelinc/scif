@@ -37,6 +37,9 @@ jobs:
           npx cap add ios
           npx cap sync ios
 
+      - name: Install iOS CocoaPods dependencies
+        run: pod install --project-directory=ios/App
+
       - name: Install App Store Connect signing key
         env:
           ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
@@ -71,7 +74,7 @@ jobs:
           test -n "$IOS_TEAM_ID" || { echo 'Missing IOS_TEAM_ID'; exit 1; }
           IOS_BUNDLE_ID="${IOS_BUNDLE_ID:-com.scif.privatecomms}"
           xcodebuild \
-            -project ios/App/App.xcodeproj \
+            -workspace ios/App/App.xcworkspace \
             -scheme App \
             -configuration Release \
             -sdk iphoneos \
