@@ -74,32 +74,22 @@ jobs:
           team_id = ARGV.fetch(0)
           project = File.read(path)
           release_config = /^[ \t]*[A-F0-9]{24} \/\* Release \*\/ = \{.*?^[ \t]*\};\n[ \t]*name = Release;/m
-          app_configs = 0
-          changed_configs = 0
+          release_configs = 0
           project = project.gsub(release_config) do |block|
-            next block unless block.include?("PRODUCT_BUNDLE_IDENTIFIER = com.scif.privatecomms;")
-            app_configs += 1
-            unless block.include?("baseConfigurationReference =")
-              abort "The app Release configuration has no Pods release configuration reference"
-            end
-            updated = block
-            if updated.include?("baseConfigurationReference =")
-              updated = updated.sub(/^[ \t]*CODE_SIGN_IDENTITY = [^;]+;\s*$/m, "")
+            release_configs += 1
+            updated = block.gsub(/^[ \t]*CODE_SIGN_IDENTITY = [^;]+;\s*$/m, "")
+            if updated.include?("PRODUCT_BUNDLE_IDENTIFIER = com.scif.privatecomms;")
               updated.sub!(/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/) do |bundle|
-                "#{bundle}\n\t\t\t\tDEVELOPMENT_TEAM = #{team_id};"
-              end
-            else
-              updated = updated.sub(/^[ \t]*CODE_SIGN_IDENTITY = [^;]+;\s*$/m, "")
-              updated = updated.sub(/^[ \t]*CODE_SIGN_IDENTITY = [^;]+;\s*$/m, "")
-              updated.sub!(/(SDKROOT = iphoneos;)/) do |sdk|
-                "#{sdk}\n\t\t\t\tCODE_SIGN_IDENTITY = \"Apple Distribution\";"
+                "#{bundle}\n\t\t\t\tCODE_SIGN_STYLE = Automatic;\n\t\t\t\tDEVELOPMENT_TEAM = #{team_id};"
               end
             end
-            changed_configs += 1
+            updated.sub!(/SDKROOT = iphoneos;/) do |sdk|
+              "#{sdk}\n\t\t\t\tCODE_SIGN_IDENTITY = \"Apple Distribution\";"
+            end
             updated
           end
-          abort "Expected one app Release configuration; found #{app_configs}" unless app_configs == 1
-          abort "Failed to update Release signing identity" unless changed_configs == 1
+          abort "Expected project and app Release configurations; found #{release_configs}" unless release_configs == 2
+          abort "Release configurations still use a development signing identity" if project.match?(/name = Release;(?:(?!name =).)*iPhone Developer/m)
           File.write(path, project)
           RUBY
           grep -E 'CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM' ios/App/App.xcodeproj/project.pbxproj | sort -u
