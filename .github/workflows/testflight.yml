@@ -73,19 +73,24 @@ jobs:
           path = "ios/App/App.xcodeproj/project.pbxproj"
           team_id = ARGV.fetch(0)
           project = File.read(path)
-          release_config = /((?:[A-F0-9]{24}) \/\* Release \*\/ = \{\s*isa = XCBuildConfiguration;\s*buildSettings = \{)(.*?)(\n\s*\};\s*name = Release;)/m
-          target_configs = project.scan(/([A-F0-9]{24}) \/\* Release \*\/ = \{\s*isa = XCBuildConfiguration;\s*baseConfigurationReference = .*?\/\* Pods-App\.release\.xcconfig \*\/;\s*buildSettings = \{(.*?)\n\s*\};\s*name = Release;/m)
-          abort "Expected one app Release build configuration; found #{target_configs.length}" unless target_configs.length == 1
-          matches = 0
-          project = project.gsub(release_config) do
-            header, settings, footer = $1, $2, $3
-            settings = settings.sub(/\n\s*CODE_SIGN_IDENTITY = [^;]+;/, "")
-            settings += "\n\t\t\t\tCODE_SIGN_IDENTITY = \"Apple Distribution\";"
-            settings += "\n\t\t\t\tDEVELOPMENT_TEAM = #{team_id};" if settings.include?("PRODUCT_BUNDLE_IDENTIFIER")
-            matches += 1
-            header + settings + footer
+          release_config = /^[ \t]*[A-F0-9]{24} \/\* Release \*\/ = \{.*?^[ \t]*\};\n[ \t]*name = Release;/m
+          app_configs = 0
+          changed_configs = 0
+          project = project.gsub(release_config) do |block|
+            next block unless block.include?("PRODUCT_BUNDLE_IDENTIFIER = com.scif.privatecomms;")
+            app_configs += 1
+            unless block.include?("baseConfigurationReference =")
+              abort "The app Release configuration has no Pods release configuration reference"
+            end
+            updated = block.sub(/^[ \t]*CODE_SIGN_IDENTITY = [^;]+;\s*$/m, "")
+            updated.sub!(/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/) do |bundle|
+              "#{bundle}\n\t\t\t\tCODE_SIGN_IDENTITY = \"Apple Distribution\";\n\t\t\t\tDEVELOPMENT_TEAM = #{team_id};"
+            end
+            changed_configs += 1
+            updated
           end
-          abort "Expected two Release signing configurations; found #{matches}" unless matches == 2
+          abort "Expected one app Release configuration; found #{app_configs}" unless app_configs == 1
+          abort "Failed to update Release signing identity" unless changed_configs == 1
           File.write(path, project)
           RUBY
           grep -E 'CODE_SIGN_IDENTITY|DEVELOPMENT_TEAM' ios/App/App.xcodeproj/project.pbxproj | sort -u
