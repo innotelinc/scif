@@ -82,9 +82,18 @@ jobs:
             unless block.include?("baseConfigurationReference =")
               abort "The app Release configuration has no Pods release configuration reference"
             end
-            updated = block.sub(/^[ \t]*CODE_SIGN_IDENTITY = [^;]+;\s*$/m, "")
-            updated.sub!(/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/) do |bundle|
-              "#{bundle}\n\t\t\t\tCODE_SIGN_IDENTITY = \"Apple Distribution\";\n\t\t\t\tDEVELOPMENT_TEAM = #{team_id};"
+            updated = block
+            if updated.include?("baseConfigurationReference =")
+              updated = updated.sub(/^[ \t]*CODE_SIGN_IDENTITY = [^;]+;\s*$/m, "")
+              updated.sub!(/PRODUCT_BUNDLE_IDENTIFIER = [^;]+;/) do |bundle|
+                "#{bundle}\n\t\t\t\tDEVELOPMENT_TEAM = #{team_id};"
+              end
+            else
+              updated = updated.sub(/^[ \t]*CODE_SIGN_IDENTITY = [^;]+;\s*$/m, "")
+              updated = updated.sub(/^[ \t]*CODE_SIGN_IDENTITY = [^;]+;\s*$/m, "")
+              updated.sub!(/(SDKROOT = iphoneos;)/) do |sdk|
+                "#{sdk}\n\t\t\t\tCODE_SIGN_IDENTITY = \"Apple Distribution\";"
+              end
             end
             changed_configs += 1
             updated
