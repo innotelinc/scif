@@ -14,7 +14,9 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    networks: [private]
+    networks:
+      private:
+        aliases: [database]
 
   api:
     build:
@@ -37,11 +39,14 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-    networks: [private]
+    networks:
+      private:
+        aliases: [api]
 
 volumes:
   scif-data:
 
 networks:
   private:
-    internal: true
+    # Keep this as a regular bridge: Docker Desktop cannot publish host ports from an internal-only network.
+    # PostgreSQL remains unexposed; only the API is bound to 127.0.0.1.
