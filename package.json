@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "server": "node server/index.mjs",
     "build": "tsc --noEmit && vite build",
     "check": "tsc --noEmit",
     "cap:sync": "cap sync",
@@ -13,7 +14,8 @@
   },
   "dependencies": {
     "@capacitor/core": "^7.4.0",
-    "@capacitor/push-notifications": "^7.0.2"
+    "@capacitor/push-notifications": "^7.0.2",
+    "pg": "^8.16.3"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.0",

@@ -1,105 +1,140 @@
-import { dictate, registerPush, voiceAuthNotice } from './security';
-import { ScifCallKit } from './calls';
+import { addContact, contacts, history, login, logout, me, register, sendMessage, type Account, type Contact, type Message } from './api';
+import { createIdentity, decryptEnvelope, encryptForBoth, fingerprint, unlockIdentity, type Identity } from './crypto';
+import { dictate } from './security';
 
-const contacts = [
-  { initials: 'AM', name: 'Alex Morgan', preview: 'Key rotation is complete.', time: '09:42', color: 'mint', unread: true },
-  { initials: 'JP', name: 'Jordan Park', preview: 'Call you after the briefing.', time: '08:16', color: 'blue', unread: false },
-  { initials: 'SK', name: 'Samira Khan', preview: 'Encrypted attachment received', time: 'Yesterday', color: 'violet', unread: false },
-  { initials: 'OPS', name: 'Ops channel', preview: 'Mira: endpoint check passed', time: 'Yesterday', color: 'amber', unread: false }
-];
-
-const icons = {
-  shield: '<svg viewBox="0 0 24 24"><path d="M12 3 20 6v5c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6l8-3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>',
-  search: '<svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.4"/><path d="m16 16 4 4"/></svg>',
-  phone: '<svg viewBox="0 0 24 24"><path d="M7 3H4c-.6 0-1 .4-1 1 0 9.4 7.6 17 17 17 .6 0 1-.4 1-1v-3l-4.5-2-2 2a14 14 0 0 1-6.5-6.5l2-2L8 3.5 7 3Z"/></svg>',
-  video: '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg>',
-  mic: '<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0m-7 7v3m-4 0h8"/></svg>',
-  lock: '<svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 1 1 8 0v3"/></svg>',
-  send: '<svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/></svg>',
-  plus: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
-  more: '<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>'
-};
-
-function avatar(contact: typeof contacts[number], extra = ''): string {
-  return `<div class="avatar ${contact.color} ${extra}">${contact.initials}</div>`;
-}
+const icon = '<svg viewBox="0 0 24 24"><path d="M12 3 20 6v5c0 5-3.4 8.4-8 10-4.6-1.6-8-5-8-10V6l8-3Z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></svg>';
+const sendIcon = '<svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/></svg>';
 
 export function initializeApp(root: HTMLElement): void {
   root.innerHTML = `
-    <aside class="sidebar">
-      <div class="brand"><div class="brand-icon"><img src="/scif-mobile-mark.svg" alt="" /></div><div><b>SCIF <span class="brand-mobile">MOBILE</span></b><small>PRIVATE NETWORK</small></div></div>
-      <div class="profile"><div class="profile-avatar">RM</div><div class="profile-text"><strong>Riley Morgan</strong><small>Personal workspace</small></div><span class="online-dot"></span></div>
-      <div class="section-label">COMMUNICATIONS <button class="tiny-action" title="New message">${icons.plus}</button></div>
-      <nav class="nav"><button class="nav-item active" data-screen="messages"><span class="nav-icon">▤</span> Messages <span class="nav-count">2</span></button><button class="nav-item" data-screen="calls"><span class="nav-icon">${icons.phone}</span> Calls</button><button class="nav-item" data-screen="email"><span class="nav-icon">✉</span> Secure email</button><button class="nav-item" data-screen="files"><span class="nav-icon">▧</span> Shared files</button></nav>
-      <div class="section-label contacts-title">RECENT CONTACTS <button class="tiny-action" title="Add contact">${icons.plus}</button></div>
-      <div class="contact-list">${contacts.map((c, i) => `<button class="contact-row ${i === 0 ? 'selected' : ''}" data-contact="${i}">${avatar(c)}<span class="contact-copy"><strong>${c.name}</strong><small>${c.preview}</small></span><span class="contact-meta"><small>${c.time}</small>${c.unread ? '<i></i>' : ''}</span></button>`).join('')}</div>
-      <div class="sidebar-bottom"><div class="sidebar-security">${icons.lock}<span>End-to-end encryption<br><b>Session protected</b></span><span class="check-mark">✓</span></div><button class="settings-button"><span>⚙</span> Settings <span class="shortcut">⌘ ,</span></button></div>
-    </aside>
-    <main class="main-area">
-      <header class="topbar"><div class="mobile-brand"><img src="/scif-mobile-mark.svg" alt="" /><b>SCIF <span>MOBILE</span></b></div><div class="top-heading"><span class="eyebrow">SECURE MESSAGING</span><h1>Messages</h1></div><div class="top-actions"><button class="icon-btn" title="Search">${icons.search}</button><button class="network-status"><i></i> PRIVATE CONNECTION</button><button class="user-mini">RM</button></div></header>
-      <div class="workspace">
-        <section class="conversation">
-          <div class="conversation-head"><div class="person-heading">${avatar(contacts[0], 'large')}<div><h2>Alex Morgan <span class="verified">✓</span></h2><p><i></i> Available · SCIF contact</p></div></div><div class="call-actions"><button class="call-btn" data-action="audio">${icons.phone}<span>Voice</span></button><button class="call-btn primary" data-action="video">${icons.video}<span>Video</span></button><button class="icon-btn" title="More actions">${icons.more}</button></div></div>
-          <div class="secure-banner">${icons.lock}<span><b>End-to-end encrypted</b><small>Only you and Alex can read or listen to this conversation.</small></span><button class="banner-info" title="Security details">ⓘ</button></div>
-          <div class="message-feed"><div class="date-divider"><span>TODAY · 09:38</span></div><div class="message received"><div class="message-sender">Alex Morgan <span>09:38</span></div><p>Morning. The access review is finished. I rotated the shared keys and confirmed the devices are current.</p></div><div class="message sent"><div class="message-sender">You <span>09:40 <i class="delivered">✓✓</i></span></div><p>Thanks. Did the field team get the updated secure channel details?</p></div><div class="message received"><div class="message-sender">Alex Morgan <span>09:42</span></div><p>Yes, confirmed with each person on the approved roster. I'll send the summary through secure email.</p><div class="attachment">${icons.lock}<span><b>Access review summary</b><small>Encrypted document · 248 KB</small></span><span class="download-mark">↓</span></div></div><div class="typing"><span></span><span></span><span></span><small>Alex is typing</small></div></div>
-          <div class="composer"><div class="composer-toolbar"><button title="Attach file">＋</button><button title="Record voice message" data-action="voice">${icons.mic}</button><span class="composer-encryption">${icons.lock} Encrypted</span><button title="More options">${icons.more}</button></div><textarea id="message-input" placeholder="Write a secure message…" rows="1"></textarea><div class="composer-bottom"><span>Messages are protected in transit and at rest when connected to a configured service.</span><button id="send-button" class="send-btn">${icons.send}</button></div></div>
-        </section>
-        <aside class="details-panel"><div class="details-head"><span>CONVERSATION DETAILS</span><button class="icon-btn" title="More">${icons.more}</button></div><div class="detail-person">${avatar(contacts[0], 'detail-avatar')}<h3>Alex Morgan</h3><p>SCIF contact · Verified</p><button class="detail-profile">View profile</button></div><div class="detail-block"><div class="block-title">SECURITY STATUS <span class="secure-pill">SECURE</span></div><div class="security-item"><span class="security-icon">${icons.lock}</span><span><b>End-to-end encryption</b><small>Active for this conversation</small></span></div><div class="security-item"><span class="security-icon">⌁</span><span><b>Identity verified</b><small>Safety number confirmed</small></span></div><button class="fingerprint">Show safety number <span>→</span></button></div><div class="detail-block"><div class="block-title">VOICE & IDENTITY</div><div class="security-item"><span class="security-icon">${icons.mic}</span><span><b>Voice dictation</b><small>Optional device speech service</small></span></div><div class="voice-note">${icons.shield}<span>Voice matching is not enabled. Use device biometrics or passkeys for sign-in; voice is not a reliable identity factor.</span></div><button class="voice-auth" id="voice-auth">Learn about voice security <span>↗</span></button></div><div class="detail-block"><div class="block-title">SHARED MEDIA <button>View all</button></div><div class="media-grid"><div class="media-thumb photo-one">▧</div><div class="media-thumb photo-two">▧</div><div class="media-thumb file-thumb">PDF</div></div></div><div class="privacy-note">${icons.shield}<span><b>Privacy, by design</b><small>No contact uploads. No ad tracking.</small></span></div></aside>
-      </div>
-      <footer class="app-footer"><span>${icons.shield} SCIF PRIVATE NETWORK</span><span>PROTOTYPE · NOT FOR CLASSIFIED OR EMERGENCY USE</span><span>CONNECTION ENCRYPTION REQUIRES CONFIGURED BACKEND</span></footer>
-    </main>
-    <div class="toast" id="toast" role="status"></div>
-    <dialog id="voice-dialog"><form method="dialog"><button class="dialog-close" aria-label="Close">×</button><div class="dialog-icon">${icons.mic}</div><span class="eyebrow">VOICE DICTATION</span><h2>Speak a message</h2><p>Speech recognition availability depends on the device and may use its online speech service. Do not dictate passwords, codes, or sensitive content.</p><div class="dictation-result" id="dictation-result">Your transcript appears here after you choose Start.</div><button class="start-dictation" type="button" id="start-dictation">Start dictation</button><button class="dialog-cancel">Close</button></form></dialog>
+    <main class="auth-page" id="auth-page"><form class="auth-card" id="auth-form"><div class="brand"><img src="/scif-mobile-mark.svg" alt=""><b>SCIF <small>MOBILE</small></b></div><span class="eyebrow">PRIVATE DIRECT MESSAGING</span><h1 id="auth-title">Sign in</h1><p class="muted">Messages are encrypted on your device before they reach the service. Your account passphrase cannot be reset by SCIF.</p><label>Username<input id="auth-username" autocomplete="username" minlength="3" maxlength="24" pattern="[A-Za-z0-9_]{3,24}" required placeholder="your_username"></label><label>Account passphrase<input id="auth-password" type="password" autocomplete="current-password" minlength="12" maxlength="1024" required placeholder="At least 12 characters"></label><div class="auth-error" id="auth-error" role="alert"></div><button class="primary-action" id="auth-submit" type="submit">Sign in</button><button class="text-action" id="auth-switch" type="button">Create a new account</button><p class="warning-note">Lost passphrase means lost messages. Keep a secure offline backup; there is no password reset.</p></form></main>
+    <main class="app-shell hidden" id="app-shell"><aside class="sidebar"><div class="brand"><img class="brand-logo" src="/scif-mobile-mark.svg" alt=""><b>SCIF <small>MOBILE</small></b></div><div class="profile"><div class="profile-avatar" id="user-initials">?</div><div class="profile-text"><strong id="user-name">Loading</strong><small>Encrypted account</small></div></div><div class="section-label">DIRECT CONTACTS <button class="tiny-action" id="add-contact-open" title="Add contact">＋</button></div><form class="add-contact hidden" id="add-contact-form"><input id="new-contact" placeholder="username" maxlength="24" autocomplete="off"><button type="submit">Add</button></form><div class="contact-list" id="contact-list"></div><div class="sidebar-bottom"><div class="sidebar-security">${icon}<span>Message bodies are<br><b>encrypted on device</b></span></div><button class="settings-button" id="logout">Sign out</button></div></aside><section class="main-area"><header class="topbar"><div class="top-heading"><span class="eyebrow">SCIF MOBILE · DIRECT MESSAGE</span><h1 id="conversation-title">Choose a contact</h1></div><div class="top-actions"><span class="connection" id="connection">Checking service…</span></div></header><div class="notice" id="notice">SCIF encrypts message content in your app. Usernames, timing, and message sizes remain visible to the service.</div><div class="verification hidden" id="verification"></div><div class="message-feed" id="message-feed"><div class="empty-state"><div>${icon}</div><h2>No demo messages</h2><p>Add a SCIF username and open that conversation. New accounts can only message other registered accounts.</p></div></div><form class="composer" id="composer"><div class="composer-meta"><span id="composer-peer">Select a contact to message</span><button type="button" id="dictate">Voice dictation</button><span>Encrypted before send</span></div><textarea id="message-input" maxlength="4000" rows="2" placeholder="Write a message…" disabled></textarea><div class="composer-bottom"><small>Never send emergency or classified information. This service has not had an independent security audit.</small><button class="send-btn" type="submit" disabled id="send-button">${sendIcon}<span>Send</span></button></div></form><footer class="app-footer"><span>${icon} SCIF MOBILE</span><span>CALLS, SMS/MMS, EMAIL, BLUETOOTH AND PUSH CALLING ARE NOT IMPLEMENTED</span></footer></section></main><div class="toast" id="toast" role="status"></div>
   `;
-
-  let toastTimer = 0;
-  const toast = (message: string) => {
-    const node = document.querySelector<HTMLElement>('#toast')!;
-    node.textContent = message;
-    node.classList.add('visible');
-    window.clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => node.classList.remove('visible'), 3600);
+  let mode: 'login' | 'register' = 'login';
+  let account: Account | null = null;
+  let identity: Identity | null = null;
+  let selected: Contact | null = null;
+  let pollTimer = 0;
+  const $ = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
+  const notice = (message: string, bad = false) => {
+    const node = $('#toast'); node.textContent = message; node.classList.toggle('bad', bad); node.classList.add('visible');
+    window.setTimeout(() => node.classList.remove('visible'), 5000);
+  };
+  const setAuthError = (message: string) => { $('#auth-error').textContent = message; };
+  const describeService = async () => {
+    try {
+      const response = await fetch((import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1').replace(/\/api\/v1\/?$/, '/healthz'));
+      $('#connection').textContent = response.ok ? 'SERVICE ONLINE · TLS REQUIRED IN PRODUCTION' : 'SERVICE UNAVAILABLE';
+      $('#connection').classList.toggle('online', response.ok);
+    } catch { $('#connection').textContent = 'SERVICE UNREACHABLE'; $('#connection').classList.remove('online'); }
+  };
+  const drawContacts = async () => {
+    const items = await contacts();
+    const list = $('#contact-list'); list.replaceChildren();
+    for (const contact of items) {
+      const button = document.createElement('button'); button.className = `contact-row ${selected?.id === contact.id ? 'selected' : ''}`;
+      const avatar = document.createElement('span'); avatar.className = 'avatar'; avatar.textContent = contact.username.slice(0, 2).toUpperCase();
+      const label = document.createElement('span'); label.className = 'contact-copy';
+      const name = document.createElement('strong'); name.textContent = contact.username;
+      const sub = document.createElement('small'); sub.textContent = 'SCIF account';
+      label.append(name, sub); button.append(avatar, label);
+      button.addEventListener('click', () => { void openConversation(contact); }); list.append(button);
+    }
+  };
+  const openConversation = async (contact: Contact) => {
+    selected = contact; $('#conversation-title').textContent = `@${contact.username}`; $('#composer-peer').textContent = `Encrypted to @${contact.username}`;
+    $('#message-input').removeAttribute('disabled'); $('#send-button').removeAttribute('disabled');
+    const peerFingerprint = await fingerprint(contact.publicKey);
+    let pins: Record<string, string> = {};
+    try { pins = JSON.parse(localStorage.getItem('scif.peer-pins') || '{}') as Record<string, string>; }
+    catch { localStorage.removeItem('scif.peer-pins'); }
+    const previous = pins[contact.id];
+    const verification = $('#verification'); verification.classList.remove('hidden');
+    verification.textContent = previous && previous !== peerFingerprint
+      ? `WARNING: @${contact.username} key changed. Stop messaging and verify with them out of band. Current fingerprint: ${peerFingerprint}`
+      : `Verify @${contact.username} safety fingerprint in person or through a separate trusted channel: ${peerFingerprint}. First-use identity is not verified by the server.`;
+    if (!previous) { pins[contact.id] = peerFingerprint; localStorage.setItem('scif.peer-pins', JSON.stringify(pins)); }
+    await drawContacts(); await refreshMessages();
+    window.clearInterval(pollTimer); pollTimer = window.setInterval(() => { void refreshMessages().catch((e) => notice(e.message, true)); }, 5000);
+  };
+  const refreshMessages = async () => {
+    if (!selected || !account || !identity) return;
+    const result = await history(selected.username);
+    const feed = $('#message-feed'); feed.replaceChildren();
+    if (!result.messages.length) {
+      const empty = document.createElement('div'); empty.className = 'empty-state compact'; empty.textContent = `This conversation with @${selected.username} has no messages yet.`; feed.append(empty); return;
+    }
+    for (const message of result.messages) {
+      const fromSelf = message.senderId === account.id;
+      const aad = [message.senderId, message.recipientId].sort().join(':');
+      let text: string;
+      try { text = await decryptEnvelope(message.envelope, identity, aad); }
+      catch { text = '[Unable to authenticate/decrypt message. Check the contact key fingerprint.]'; }
+      const bubble = document.createElement('article'); bubble.className = `message ${fromSelf ? 'sent' : 'received'}`;
+      const meta = document.createElement('div'); meta.className = 'message-meta'; meta.textContent = `${fromSelf ? 'You' : `@${selected.username}`} · ${new Date(message.createdAt).toLocaleString()}`;
+      const body = document.createElement('p'); body.textContent = text; bubble.append(meta, body); feed.append(bubble);
+    }
+    feed.scrollTop = feed.scrollHeight;
   };
 
-  document.querySelectorAll<HTMLElement>('.nav-item').forEach((button) => button.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach((item) => item.classList.remove('active'));
-    button.classList.add('active');
-    if (button.dataset.screen !== 'messages') toast(`${button.textContent?.trim()} workspace is a scaffold; connect a secure service to enable it.`);
-  }));
-  document.querySelectorAll<HTMLElement>('[data-action="audio"], [data-action="video"]').forEach((button) => button.addEventListener('click', () => toast('Calling needs a configured encrypted signaling/media service and native call integration.')));
-  document.querySelectorAll<HTMLElement>('[data-action="voice"]').forEach((button) => button.addEventListener('click', () => document.querySelector<HTMLDialogElement>('#voice-dialog')!.showModal()));
-  document.querySelector('#voice-auth')?.addEventListener('click', () => toast(voiceAuthNotice));
-  document.querySelector('#start-dictation')?.addEventListener('click', async () => {
-    const result = document.querySelector<HTMLElement>('#dictation-result')!;
-    result.textContent = 'Listening…';
-    try {
-      const dictation = await dictate();
-      result.textContent = `“${dictation.transcript}” — ${dictation.warning}`;
-      const input = document.querySelector<HTMLTextAreaElement>('#message-input')!;
-      input.value = [input.value, dictation.transcript].filter(Boolean).join(' ');
-    } catch (error) {
-      result.textContent = error instanceof Error ? error.message : 'Dictation unavailable.';
-    }
+  $('#auth-switch').addEventListener('click', () => {
+    mode = mode === 'login' ? 'register' : 'login';
+    $('#auth-title').textContent = mode === 'login' ? 'Sign in' : 'Create account';
+    $('#auth-password').setAttribute('autocomplete', mode === 'login' ? 'current-password' : 'new-password');
+    $('#auth-submit').textContent = mode === 'login' ? 'Sign in' : 'Create account';
+    $('#auth-switch').textContent = mode === 'login' ? 'Create a new account' : 'I already have an account';
+    ($('#auth-password') as HTMLInputElement).minLength = mode === 'register' ? 12 : 1; setAuthError('');
   });
-  document.querySelector('#send-button')?.addEventListener('click', () => {
-    const input = document.querySelector<HTMLTextAreaElement>('#message-input')!;
-    if (!input.value.trim()) return;
-    toast('Message is local prototype content only; no secure message service is connected.');
-    input.value = '';
-  });
-  document.querySelector('.network-status')?.addEventListener('click', async () => {
-    try {
-      const token = await registerPush();
-      toast(`Push registered. Device token: ${token.slice(0, 8)}… Send it only to your authenticated push backend.`);
-    } catch (error) {
-      toast(error instanceof Error ? error.message : 'Push registration failed.');
-    }
-  });
-  document.querySelectorAll('.contact-row').forEach((button) => button.addEventListener('click', () => {
-    document.querySelectorAll('.contact-row').forEach((item) => item.classList.remove('selected'));
-    button.classList.add('selected');
-    toast('Conversation switching is placeholder UI until the encrypted messaging backend is connected.');
-  }));
 
-  void ScifCallKit.addListener('incomingCall', ({ callerName }) => toast(`Incoming secure call: ${callerName}`));
+  $('#auth-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const username = ($('#auth-username') as HTMLInputElement).value.trim().toLowerCase();
+    const password = ($('#auth-password') as HTMLInputElement).value;
+    const submit = $('#auth-submit') as HTMLButtonElement; submit.disabled = true; setAuthError('Working…');
+    try {
+      let user: Account;
+      if (mode === 'register') {
+        if (password.length < 12) throw new Error('Choose a passphrase with at least 12 characters.');
+        const generated = await createIdentity(password);
+        user = await register(username, password, generated.identity.publicKey, generated.wrappedPrivateKey);
+        identity = generated.identity;
+      } else {
+        user = await login(username, password);
+        identity = await unlockIdentity(password, user.publicKey, user.wrappedPrivateKey);
+      }
+      account = user;
+      ($('#auth-password') as HTMLInputElement).value = '';
+      ($('#auth-password') as HTMLInputElement).minLength = 1;
+      $('#auth-page').classList.add('hidden'); $('#app-shell').classList.remove('hidden');
+      $('#user-name').textContent = `@${user.username}`; $('#user-initials').textContent = user.username.slice(0, 2).toUpperCase();
+      setAuthError(''); await drawContacts(); await describeService();
+    } catch (error) { identity = null; setAuthError(error instanceof Error ? error.message : 'Account request failed.'); }
+    finally { submit.disabled = false; }
+  });
+  $('#add-contact-open').addEventListener('click', () => { $('#add-contact-form').classList.toggle('hidden'); ($('#new-contact') as HTMLInputElement).focus(); });
+  $('#add-contact-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try { await addContact(($('#new-contact') as HTMLInputElement).value.trim()); ($('#new-contact') as HTMLInputElement).value = ''; $('#add-contact-form').classList.add('hidden'); await drawContacts(); notice('Contact added. Verify their fingerprint out of band before sharing sensitive information.'); }
+    catch (error) { notice(error instanceof Error ? error.message : 'Could not add contact.', true); }
+  });
+  $('#composer').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!selected || !account || !identity) return;
+    const input = $('#message-input') as HTMLTextAreaElement;
+    const text = input.value.trim(); if (!text) return;
+    const button = $('#send-button') as HTMLButtonElement; button.disabled = true;
+    try {
+      const aad = [account.id, selected.id].sort().join(':');
+      const envelopes = await encryptForBoth(text, identity, selected.publicKey, aad);
+      await sendMessage(selected.username, envelopes.envelopeSender, envelopes.envelopeRecipient);
+      input.value = ''; await refreshMessages();
+    } catch (error) { notice(error instanceof Error ? error.message : 'Message was not sent.', true); }
+    finally { button.disabled = false; }
+  });
+  $('#dictate').addEventListener('click', async () => {
+    try { const result = await dictate(); const input = $('#message-input') as HTMLTextAreaElement; input.value = `${input.value}${input.value ? ' ' : ''}${result.transcript}`; }
+    catch (error) { notice(error instanceof Error ? error.message : 'Dictation unavailable.', true); }
+  });
+  $('#logout').addEventListener('click', () => { window.clearInterval(pollTimer); logout(); account = null; identity = null; selected = null; $('#app-shell').classList.add('hidden'); $('#auth-page').classList.remove('hidden'); });
+  void describeService();
 }

@@ -1,62 +1,36 @@
-# SCIF mobile prototype
+# SCIF Mobile
 
-SCIF is a Capacitor web application scaffold for iOS and Android. This repository contains a polished UI prototype, device speech dictation (where supported), Capacitor push registration, and setup notes for native incoming-call integration. It is **not a secure communications product yet** and must not be used for classified, emergency, or sensitive communications.
+SCIF Mobile now includes one working service slice: accounts, contact lookup, and direct text messages encrypted in the app before they reach the API. The server stores message ciphertext envelopes, public keys, account metadata, and password verifiers. It cannot recover accounts when the user loses their passphrase. The client encrypts each message to both participants using Web Crypto ECDH P-256, HKDF-SHA-256, and AES-256-GCM.
 
-## Run the web prototype
+This implementation is an early, **not independently audited** prototype. It is not appropriate for classified, emergency, or high-risk communications. It is not Signal protocol: no Double Ratchet, forward secrecy, post-compromise security, multi-device key management, audited recovery, group messaging, attachments, or reliable push delivery. Contact-key verification is first-use pinning in browser local storage; verify fingerprints with the peer through a separate trusted channel. Do not assume first contact identity until verified.
+
+Calls, CallKit/VoIP PushKit, SMS/MMS, email, caller-ID masking, voice masking, voice authentication, Bluetooth messaging, and production-grade abuse defenses are not implemented. Those features are not presented as working in the app.
+
+## Run the service locally
+
+Requires Docker Compose and Node.js. From this directory:
 
 ```sh
-npm install
+Copy-Item .env.example .env
+# Edit .env and set long random POSTGRES_PASSWORD and SCIF_JWT_SECRET values.
+docker compose up --build -d
+npm ci
 npm run dev
 ```
 
-## Create native projects
+The API listens on `http://localhost:8080`; the Vite app runs on `http://localhost:5173`. `APP_ORIGINS` in `.env` must include the exact app origin. For iOS, set `VITE_API_BASE_URL` to your public HTTPS API endpoint **before** `npm run build`, then `npx cap sync ios`. Never point a release build at localhost; a physical phone's localhost is the phone itself.
 
-Install Xcode on macOS for iOS builds; Android Studio and its SDK are needed for Android builds.
+For deployment, place the API behind a maintained TLS reverse proxy, set `NODE_ENV=production`, set `API_BIND_ADDRESS=0.0.0.0` only when the host firewall restricts access to the proxy, restrict `APP_ORIGINS`, protect PostgreSQL with backups and access controls, rotate secrets, and monitor patch/security advisories. Keep `.env` out of Git. `SCIF_JWT_SECRET` signs one-day bearer tokens; resetting it invalidates all sessions. Database backups contain account metadata and ciphertext, not plaintext message bodies.
 
-```sh
-npm run build
-npx cap add ios
-npx cap add android
-npx cap sync
-npx cap open ios
-npx cap open android
-```
+## API
 
-The repository environment used to scaffold this project is Windows. iOS compilation and signing require macOS with Xcode. `.github/workflows/testflight.yml` builds and uploads the current prototype to TestFlight on pushes to `main` that change `scif/**`, or by manually starting the workflow in GitHub Actions. This workflow does not add CallKit/PushKit to the generated iOS target; incoming calls are not implemented by the uploaded build.
+- `POST /api/v1/register`, `POST /api/v1/login`
+- `GET /api/v1/me`, `GET|POST /api/v1/contacts`
+- `GET /api/v1/messages/:username`, `POST /api/v1/messages`
+- `GET /healthz`
 
-### GitHub Actions setup for TestFlight
+Registration wraps the ECDH private key locally with a key derived from the user's passphrase. The server separately stores an scrypt password verifier for API authentication. Losing the passphrase means losing the wrapped private key and unreadable historical messages. There is no server-side recovery path.
 
-Push this repository to GitHub, then configure these repository Actions secrets:
+## TestFlight
 
-- `ASC_KEY_ID`: App Store Connect API key ID.
-- `ASC_ISSUER_ID`: App Store Connect API issuer ID.
-- `ASC_PRIVATE_KEY_BASE64`: Base64-encoded `.p8` private key. Keep it in GitHub Secrets, never in the repository.
-- `IOS_TEAM_ID`: Apple Developer Team ID.
-
-Optional repository Actions variable:
-
-- `IOS_BUNDLE_ID`: registered App ID / bundle identifier. Defaults to `com.scif.privatecomms`; it must be registered in the Apple Developer account and match the App Store Connect app record.
-
-Create an App Store Connect API key with permissions appropriate for uploading builds, and make sure the account has access to the app. Automatic signing must be permitted for the team. After the workflow succeeds, Apple processes the uploaded build before it appears in TestFlight. Add testers and complete required beta app metadata in App Store Connect. No Apple credentials should be sent in chat or committed to source.
-
-The current workflow packages the web prototype only. The local Swift CallKit file is not wired into the generated Capacitor Xcode project, and push entitlements, VoIP push, Android call handling, and secure communications services are not finished.
-
-## Incoming calls on locked phones
-
-The Capacitor Push Notifications plugin registers for remote notifications, but it does not implement VoIP calling or CallKit. For iOS, add a maintained native CallKit/PushKit Capacitor plugin or a native Swift plugin, enable the Push Notifications and Background Modes > Voice over IP capabilities, register PushKit with APNs VoIP push, and report incoming calls to `CXProvider` promptly. A backend must authenticate the caller, issue VoIP pushes, and connect an encrypted media session. Do not use ordinary alert push as a substitute for VoIP push or CallKit. iOS may throttle or reject misuse of VoIP pushes.
-
-Android needs a native call-notification implementation using the platform's Telecom/ConnectionService or a full-screen call notification with user-granted notification permissions, plus FCM and a backend. OEM background restrictions and Android version behavior require physical-device testing.
-
-Push payloads should contain only opaque call IDs and minimal routing metadata; never put message bodies, credentials, or keys in push notifications. The client should fetch authenticated call details after wake.
-
-## Voice recognition and authentication
-
-The **Dictation** control uses the Web Speech API when available. OS/browser speech services can send audio to a provider; the UI warns users and discourages secrets. It is for composing text only.
-
-Do not use voice matching as the sole authentication or account-recovery factor. Recorded/replayed speech, synthesized voices, noisy environments, and accessibility problems make speaker recognition unsuitable as a passkey replacement. Use platform biometrics/passkeys for user presence and authentication, and server-side cryptographic challenge-response with anti-replay controls for account/session authorization. Store no raw voiceprints in the web app.
-
-## Security status
-
-The chat, call, email, attachment, and contact surfaces are mock UI only. There is no messaging backend, S/MIME or end-to-end key management, call signaling/media encryption, mail transport, MMS transport, SMS integration, or Bluetooth messaging in this scaffold. Labels in the UI are illustrative and do not indicate enforced encryption. SMS/MMS and carrier calls are not end-to-end encrypted by this app. Wi-Fi/Bluetooth are transports, not security guarantees. A production release needs a reviewed protocol, key verification and recovery design, authenticated backend, secure native storage, abuse handling, and independent security review.
-
-Never commit Apple certificates, provisioning profiles, APNs private keys, signing secrets, or production credentials. Use local keychain/CI secrets and least-privilege access. Credentials are not needed for this scaffold.
+GitHub Actions builds and uploads the iOS app on pushes to `main`. Set `VITE_API_BASE_URL` as a GitHub Actions **variable** to the public HTTPS API URL, such as `https://api.example.com/api/v1`, so it is embedded into the iOS client at build time. Signing secrets are `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY_BASE64`, and `IOS_TEAM_ID`. Test the backend from an actual mobile network before distributing; HTTPS, allowed origins, account creation, and two-device encryption tests must pass first.
