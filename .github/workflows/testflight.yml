@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   ios-testflight:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 45
     steps:
       - name: Check out source
@@ -72,7 +72,6 @@ jobs:
         run: |
           test -n "$ASC_ISSUER_ID" || { echo 'Missing ASC_ISSUER_ID'; exit 1; }
           test -n "$IOS_TEAM_ID" || { echo 'Missing IOS_TEAM_ID'; exit 1; }
-          IOS_BUNDLE_ID="${IOS_BUNDLE_ID:-com.scif.privatecomms}"
           xcodebuild \
             -workspace ios/App/App.xcworkspace \
             -scheme App \
@@ -85,7 +84,6 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
-            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -98,7 +96,6 @@ jobs:
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
           IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
         run: |
-          IOS_BUNDLE_ID="${IOS_BUNDLE_ID:-com.scif.privatecomms}"
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
