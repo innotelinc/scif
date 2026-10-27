@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.scif.privatecomms',
-  appName: 'SCIF',
+  appName: 'SCIF Mobile',
   webDir: 'dist',
   plugins: {
     PushNotifications: {

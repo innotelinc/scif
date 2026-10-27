@@ -27,7 +27,7 @@ function avatar(contact: typeof contacts[number], extra = ''): string {
 export function initializeApp(root: HTMLElement): void {
   root.innerHTML = `
     <aside class="sidebar">
-      <div class="brand"><div class="brand-icon">${icons.shield}</div><div><b>SCIF</b><small>PRIVATE NETWORK</small></div></div>
+      <div class="brand"><div class="brand-icon"><img src="/scif-mobile-mark.svg" alt="" /></div><div><b>SCIF <span class="brand-mobile">MOBILE</span></b><small>PRIVATE NETWORK</small></div></div>
       <div class="profile"><div class="profile-avatar">RM</div><div class="profile-text"><strong>Riley Morgan</strong><small>Personal workspace</small></div><span class="online-dot"></span></div>
       <div class="section-label">COMMUNICATIONS <button class="tiny-action" title="New message">${icons.plus}</button></div>
       <nav class="nav"><button class="nav-item active" data-screen="messages"><span class="nav-icon">▤</span> Messages <span class="nav-count">2</span></button><button class="nav-item" data-screen="calls"><span class="nav-icon">${icons.phone}</span> Calls</button><button class="nav-item" data-screen="email"><span class="nav-icon">✉</span> Secure email</button><button class="nav-item" data-screen="files"><span class="nav-icon">▧</span> Shared files</button></nav>
@@ -36,7 +36,7 @@ export function initializeApp(root: HTMLElement): void {
       <div class="sidebar-bottom"><div class="sidebar-security">${icons.lock}<span>End-to-end encryption<br><b>Session protected</b></span><span class="check-mark">✓</span></div><button class="settings-button"><span>⚙</span> Settings <span class="shortcut">⌘ ,</span></button></div>
     </aside>
     <main class="main-area">
-      <header class="topbar"><div class="mobile-brand">${icons.shield}<b>SCIF</b></div><div class="top-heading"><span class="eyebrow">SECURE MESSAGING</span><h1>Messages</h1></div><div class="top-actions"><button class="icon-btn" title="Search">${icons.search}</button><button class="network-status"><i></i> PRIVATE CONNECTION</button><button class="user-mini">RM</button></div></header>
+      <header class="topbar"><div class="mobile-brand"><img src="/scif-mobile-mark.svg" alt="" /><b>SCIF <span>MOBILE</span></b></div><div class="top-heading"><span class="eyebrow">SECURE MESSAGING</span><h1>Messages</h1></div><div class="top-actions"><button class="icon-btn" title="Search">${icons.search}</button><button class="network-status"><i></i> PRIVATE CONNECTION</button><button class="user-mini">RM</button></div></header>
       <div class="workspace">
         <section class="conversation">
           <div class="conversation-head"><div class="person-heading">${avatar(contacts[0], 'large')}<div><h2>Alex Morgan <span class="verified">✓</span></h2><p><i></i> Available · SCIF contact</p></div></div><div class="call-actions"><button class="call-btn" data-action="audio">${icons.phone}<span>Voice</span></button><button class="call-btn primary" data-action="video">${icons.video}<span>Video</span></button><button class="icon-btn" title="More actions">${icons.more}</button></div></div>
