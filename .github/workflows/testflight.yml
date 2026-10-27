@@ -47,11 +47,15 @@ jobs:
           test -n "$ASC_KEY_ID" || { echo 'Missing ASC_KEY_ID'; exit 1; }
           key_path="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           mkdir -p "$(dirname "$key_path")"
-          printf '%s' "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > "$key_path"
+          if [[ "$ASC_PRIVATE_KEY_BASE64" == *"-----BEGIN PRIVATE KEY-----"* ]]; then
+            printf '%s\n' "$ASC_PRIVATE_KEY_BASE64" > "$key_path"
+          else
+            printf '%s' "$ASC_PRIVATE_KEY_BASE64" | base64 --decode > "$key_path"
+          fi
           chmod 600 "$key_path"
           if ! openssl pkey -in "$key_path" -noout >/dev/null 2>&1; then
             rm -f "$key_path"
-            echo 'ASC_PRIVATE_KEY_BASE64 decoded but is not a valid PEM private key. Re-encode the original App Store Connect .p8 file and update the GitHub secret.'
+            echo 'ASC_PRIVATE_KEY_BASE64 is neither a valid base64-encoded PEM nor a valid PEM key. Set it to the exact App Store Connect AuthKey .p8 file contents, either raw PEM or base64-encoded once.'
             exit 1
           fi
           echo 'App Store Connect private key format verified.'
