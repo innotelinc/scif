@@ -69,15 +69,29 @@ jobs:
           fi
           echo 'App Store Connect private key format verified.'
 
+      # Which App Store Connect record this build belongs to. Capacitor stamps
+      # appId from capacitor.config.ts into the generated project, which is the
+      # other SCIF record ("SCIF Mobile", com.scif.privatecomms), so the identity
+      # is stated here and handed to xcodebuild instead: the archive and
+      # everything exported from it are us.innotel.scif ("SCIF Privacy") unless
+      # the IOS_BUNDLE_ID repository variable says otherwise. The fallback is
+      # what makes that true even while no variable exists, so the two records
+      # cannot be swapped by forgetting to configure one.
       - name: Archive signed iOS app
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
-          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'us.innotel.scif' }}
         run: |
           test -n "$ASC_ISSUER_ID" || { echo 'Missing ASC_ISSUER_ID'; exit 1; }
           test -n "$IOS_TEAM_ID" || { echo 'Missing IOS_TEAM_ID'; exit 1; }
+          case "$IOS_BUNDLE_ID" in
+            *example*|*invalid*) echo "IOS_BUNDLE_ID is a placeholder, not a bundle id: $IOS_BUNDLE_ID"; exit 1 ;;
+            *.*.*) ;;
+            *) echo "IOS_BUNDLE_ID must be a reverse-DNS bundle id such as us.innotel.scif, got: $IOS_BUNDLE_ID"; exit 1 ;;
+          esac
+          echo "Archiving for $IOS_BUNDLE_ID (team $IOS_TEAM_ID)."
           xcodebuild \
             -workspace ios/App/App.xcworkspace \
             -scheme App \
@@ -91,16 +105,26 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
             CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER" \
+            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_ID" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             archive
+          # Read the identity back out of the archive: the build setting above
+          # decides where this ends up, and an archive that disagrees would
+          # upload to the wrong app record without failing anything else.
+          archived=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleIdentifier' "$RUNNER_TEMP/SCIF.xcarchive/Info.plist")
+          if [ "$archived" != "$IOS_BUNDLE_ID" ]; then
+            echo "::error::archive is $archived, expected $IOS_BUNDLE_ID"
+            exit 1
+          fi
+          echo "Archive carries $archived."
 
       - name: Export App Store IPA
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
-          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID }}
+          IOS_BUNDLE_ID: ${{ vars.IOS_BUNDLE_ID || 'us.innotel.scif' }}
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
@@ -124,6 +148,16 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
           test -f "$RUNNER_TEMP/export/App.ipa"
+          # -exportArchive re-signs the archive it is handed and takes no bundle
+          # id of its own, so the identity is only correct if it came through —
+          # which is worth checking before altool spends the upload.
+          unzip -q "$RUNNER_TEMP/export/App.ipa" -d "$RUNNER_TEMP/ipa"
+          exported=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$RUNNER_TEMP/ipa/Payload/App.app/Info.plist")
+          if [ "$exported" != "$IOS_BUNDLE_ID" ]; then
+            echo "::error::exported app is $exported, expected $IOS_BUNDLE_ID"
+            exit 1
+          fi
+          echo "Exported IPA carries $exported."
 
       - name: Upload build to TestFlight
         env:
