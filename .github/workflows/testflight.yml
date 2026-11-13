@@ -12,7 +12,33 @@ permissions:
   contents: read
 
 jobs:
+  # An iOS build needs a public HTTPS API URL compiled into the client. While
+  # the repository variable is unset (or still the documentation placeholder)
+  # there is nothing to build against, so the build is skipped with a notice
+  # instead of failing on every push.
+  configuration:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - name: Check the API endpoint is configured
+        id: check
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: |
+          ready=false
+          if [[ "$VITE_API_BASE_URL" == https://* ]] \
+            && [[ "$VITE_API_BASE_URL" != *example.com* ]] \
+            && [[ "$VITE_API_BASE_URL" != *example.invalid* ]]; then
+            ready=true
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          if [ "$ready" = false ]; then
+            echo "::notice::iOS build skipped: set the repository variable VITE_API_BASE_URL to this deployment's public HTTPS API URL (currently '${VITE_API_BASE_URL:-unset}')."
+          fi
   ios-testflight:
+    needs: configuration
+    if: needs.configuration.outputs.ready == 'true'
     runs-on: macos-26
     timeout-minutes: 45
     steps:
